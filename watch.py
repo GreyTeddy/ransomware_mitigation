@@ -1,38 +1,41 @@
-import sys
 import time
-
 from watchdog.observers import Observer
-from .events import ImagesEventHandler
+from watchdog.events import PatternMatchingEventHandler
 
-class ImagesWatcher:
-    def __init__(self, src_path):
-        self.__src_path = src_path
-        self.__event_handler = ImagesEventHandler()
-        self.__event_observer = Observer()
 
-    def run(self):
-        self.start()
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.stop()
+def on_created(event):
+    print(f"hey, {event.src_path} has been created!")
 
-    def start(self):
-        self.__schedule()
-        self.__event_observer.start()
+def on_deleted(event):
+    print(f"what the f**k! Someone deleted {event.src_path}!")
 
-    def stop(self):
-        self.__event_observer.stop()
-        self.__event_observer.join()
+def on_modified(event):
+    print(f"hey buddy, {event.src_path} has been modified")
 
-    def __schedule(self):
-        self.__event_observer.schedule(
-            self.__event_handler,
-            self.__src_path,
-            recursive=True
-        )
+def on_moved(event):
+    print(f"ok ok ok, someone moved {event.src_path} to {event.dest_path}")
+
+
 
 if __name__ == "__main__":
-    src_path = sys.argv[1] if len(sys.argv) > 1 else '.'
-    ImagesWatcher(src_path).run()
+    patterns = ["*"]
+    ignore_patterns = None
+    ignore_directories = ["Windows"]
+    case_sensitive = True
+    my_event_handler = PatternMatchingEventHandler(patterns, ignore_patterns, ignore_directories, case_sensitive)
+    my_event_handler.on_created = on_created
+    my_event_handler.on_deleted = on_deleted
+    my_event_handler.on_modified = on_modified
+    my_event_handler.on_moved = on_moved
+
+    path = "/"
+    go_recursively = True
+    my_observer = Observer()
+    my_observer.schedule(my_event_handler, path, recursive=go_recursively)
+    my_observer.start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        my_observer.stop()
+        my_observer.join()
