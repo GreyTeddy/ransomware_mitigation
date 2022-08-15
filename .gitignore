@@ -1,3 +1,4 @@
 psutil*
 .vscode*
 __pycache__
+watchdog*
