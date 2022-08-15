@@ -1,3 +1,4 @@
+import pprint
 import psutil
 from time import sleep
 import os
@@ -9,14 +10,14 @@ class trickster:
 
     def suspendProcess(self, pid):
         self.pid_dict[pid].suspend()
-    
+
     def resumeProcess(self, pid):
         self.pid_dict[pid].resume()
 
     def killProcess(self, pid):
         self.pid_dict[pid].kill()
         del self.pid_dict[pid]
-    
+
     def addPID(self, pid):
         self.pid_dict[pid] = psutil.Process(pid)
 
@@ -28,31 +29,30 @@ class trickster:
                 pids.append(proc.pid)
         return pids
 
-
     def getCPUUsage(self):
         return psutil.cpu_percent()
 
-    def getCPUUsageForPID(self,pid):
+    def getCPUUsageForPID(self, pid):
         # as cpu_percent shows utilisation for all threads
-        # divide for number of threads 
-        return round(self.pid_dict[pid].cpu_percent()/ (psutil.cpu_count()),1)
+        # divide for number of threads
+        return round(self.pid_dict[pid].cpu_percent() / (psutil.cpu_count()), 1)
 
     def addPIDfromName(self, name):
         for pid in self.getPIDfromName(name):
             self.addPID(pid)
 
     def suspendPIDforSeconds(self, pid: int, seconds: float):
-        
-        def suspend_then_run(pid,seconds):
+
+        def suspend_then_run(pid, seconds):
             # show the time for sleeping
             print(f"Suspending {pid} pids for {seconds} s: ")
             self.suspendProcess(pid)
             sleep(seconds)
             self.resumeProcess(pid)
-        t = Thread(target=suspend_then_run, args=(pid,seconds), kwargs=None)
+        t = Thread(target=suspend_then_run, args=(pid, seconds), kwargs=None)
         t.start()
 
-    def getMemoryBytesUtilisationForPID(self,pid):
+    def getMemoryBytesUtilisationForPID(self, pid):
         """
         Get "Unique Set Size" of process in bytes
            USS is the memory used by the process
@@ -60,16 +60,16 @@ class trickster:
         """
         return self.pid_dict[pid].memory_full_info().uss
 
-    def getMemoryPercentUtilisationForPID(self,pid):
+    def getMemoryPercentUtilisationForPID(self, pid):
         return self.pid_dict[pid].memory_percent(memtype="uss")
 
-    def getOpenFiles(self,pid):
+    def getOpenFiles(self, pid):
         return self.pid_dict[pid].open_files()
 
-    def getParentPID(self,pid):
+    def getParentPID(self, pid):
         return psutil.Process(self.pid_dict[pid].ppid())
-     
-    def getIOCountsForPID(self,pid):
+
+    def getIOCountsForPID(self, pid):
         """
         read_count: read operations
         write_count: write operations
@@ -81,11 +81,11 @@ class trickster:
                         e.g. open
         """
         return self.pid_dict[pid].io_counters()
-    
+
     def getIOCounts(self):
         return psutil.disk_io_counters(perdisk=True)
 
-import pprint
+
 pp = pprint.PrettyPrinter(indent=4)
 if __name__ == "__main__":
     name = "chrome.exe"
@@ -101,4 +101,3 @@ if __name__ == "__main__":
             sleep(2)
     except KeyboardInterrupt:
         print(hello)
-
