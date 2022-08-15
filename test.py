@@ -7,7 +7,7 @@ with open("testfile2") as file2:
         print(counter)
         counter+=1
         with open("testfile","r+") as file:
-            # file.write("0")
+            file.write("0")
             file.read()
             pass
         # with open("testfile2","r+") as file:
