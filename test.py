@@ -14,4 +14,4 @@ with open("testfile2") as file2:
         #     # file.write("1")
         #     file.readline()
         #     pass
-        sleep(1)
+        sleep(0.2)

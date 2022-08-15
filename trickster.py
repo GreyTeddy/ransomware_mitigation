@@ -83,7 +83,7 @@ class trickster:
         return self.pid_dict[pid].io_counters()
     
     def getIOCounts(self):
-        return psutil.disk_io_counters()
+        return psutil.disk_io_counters(perdisk=True)
 
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
@@ -97,14 +97,8 @@ if __name__ == "__main__":
     hello = set()
     try:
         while True:
-            # os.system('cls')
-            # for i in trick.getOpenFiles(pid):
-            #     hello.add(i)
-            # print(trick.getParentPID(pid))
-            # print(hello)
-            print(trick.getIOCountsForPID(pid).read_count)
-            print(trick.getIOCounts())
-            sleep(1)
+            print("######################################")
+            sleep(2)
     except KeyboardInterrupt:
         print(hello)
 
