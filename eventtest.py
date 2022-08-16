@@ -1,4 +1,5 @@
-from time import sleep
+from time import sleep, time
+from datetime import datetime
 from collections import OrderedDict
 import os
 import win32evtlog
@@ -53,7 +54,8 @@ pid_dict = {}
 categories_to_search = ["process_created", "file_created", "file_created"]
 # categories_to_search = list(categories_id.keys())
 
-def update_events(count):
+
+def update_events(count,max_events=20):
     for category in categories_to_search:
         # get #count events for category
         Events = search_event(
@@ -64,7 +66,7 @@ def update_events(count):
                 id_name = "ProcessId"
             else:
                 id_name = "SourceProcessId"
-            
+
             # if new PID
             if not i[id_name] in pid_dict:
                 pid_dict[i[id_name]] = {}
@@ -74,27 +76,42 @@ def update_events(count):
             # distinguish events by time
             pid_dict[i[id_name]][category][i["UtcTime"]] = i
 
-            if len(pid_dict[i[id_name]][category]) > 20:
+            if len(pid_dict[i[id_name]][category]) > max_events:
                 pid_dict[i[id_name]][category].popitem()
 
     while len(pid_dict[i[id_name]]) > 20:
         pid_dict[i[id_name]].popitem()
-    
 
-def frequency_of_actions():
-    # print("\t\t",get_running_pids())
+
+def actions_done_in_less_than(seconds = 1):
+    less_than_seconds_dict = {}
     for pid in get_running_pids():
-        # print("\t\t",pid)
-        print(pid)
         for category in pid_dict[pid]:
-            same_minute_seconds = {}
-            print("\t",category)
-            for time in pid_dict[pid][category].keys():
-                split_time = time.split(":")
-                if split_time[1] not in same_minute_seconds:
-                    same_minute_seconds[split_time[1]] = []
-                same_minute_seconds[split_time[1]].append(float(split_time[2]))
-            print("\t\t",same_minute_seconds)
+            less_than_seconds = 0
+            event_time = list(pid_dict[pid][category].keys())
+            event_time_length = len(event_time)
+            if event_time_length > 1:
+                for event_time_index in range(1,event_time_length):
+                    difference = (datetime.strptime(event_time[event_time_index],"%Y-%m-%d %H:%M:%S.%f") - datetime.strptime(event_time[event_time_index-1],
+                                                    "%Y-%m-%d %H:%M:%S.%f")).total_seconds()
+                    if difference < seconds:
+                        less_than_seconds += 1
+                    # exit()
+            if less_than_seconds > 0:
+                # print(pid)
+                # print("\t",category)
+                # print("\t\t",event_time)
+                # print("\t\t",less_than_seconds)
+                # pp.pprint(pid_dict[pid][category])
+                if pid not in less_than_seconds_dict:
+                    less_than_seconds_dict[pid] = {}
+                less_than_seconds_dict[pid][category] = less_than_seconds
+                
+
+                # exit()
+    pp.pprint(less_than_seconds_dict)
+        # exit()
+
 
 def get_running_pids():
     all_processes = []
@@ -109,18 +126,15 @@ def get_running_pids():
 
 
 COUNT = 200
+SECONDS = 0.05
 while True:
     os.system('cls')
     print('##############################')
-    update_events(COUNT)
-    frequency_of_actions()
+    update_events(COUNT,100)
+    print("actions in less than ",SECONDS,"seconds")
+    actions_done_in_less_than(SECONDS)
     # print(pid_dict.keys())
 
-    print(get_running_pids())
-    # print(all_processes)
-    # print(pid_dict.keys())
-    # print(type(all_processes))
-    # print(type(proc))
     sleep(2)
 
 # pp.pprint(pid_dict[i["ProcessId"]]["process_created"])
