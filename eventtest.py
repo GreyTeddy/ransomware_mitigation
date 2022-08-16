@@ -12,7 +12,7 @@ pp = pprint.PrettyPrinter(indent=4)
 # https://stackoverflow.com/questions/55701662/how-to-read-event-logs-under-applications-and-services-logs-in-python
 
 
-def SearchEvents(LogName, EventId, count=20):
+def search_event(LogName, EventId, count=20):
     EventLog = win32evtlog.EvtOpenLog(LogName, 1, None)
 
     totalRecords = win32evtlog.EvtGetLogInfo(
@@ -56,7 +56,7 @@ categories_to_search = ["process_created", "file_created", "file_created"]
 def update_events(count):
     for category in categories_to_search:
         # get #count events for category
-        Events = SearchEvents(
+        Events = search_event(
             'Microsoft-Windows-Sysmon/Operational', categories_id[category], count)
 
         for i in Events:
@@ -77,49 +77,50 @@ def update_events(count):
             if len(pid_dict[i[id_name]][category]) > 20:
                 pid_dict[i[id_name]][category].popitem()
 
-    # 
-    while len(pid_dict[i[id_name]]) > 50:
+    while len(pid_dict[i[id_name]]) > 20:
         pid_dict[i[id_name]].popitem()
     
 
 def frequency_of_actions():
-    for pid in pid_dict:
+    # print("\t\t",get_running_pids())
+    for pid in get_running_pids():
+        # print("\t\t",pid)
         print(pid)
         for category in pid_dict[pid]:
             same_minute_seconds = {}
-            print("\t", category)
-
+            print("\t",category)
             for time in pid_dict[pid][category].keys():
                 split_time = time.split(":")
                 if split_time[1] not in same_minute_seconds:
                     same_minute_seconds[split_time[1]] = []
-                
                 same_minute_seconds[split_time[1]].append(float(split_time[2]))
-                print("\t\t",split_time)
-                print("\t\t",same_minute_seconds)
-            # for time in pid_dict[pid][category]:
-            #     # if len(pid_dict[pid][category]) > 10:
-            #     print("\t\t",time.split(":"))
-    # exit()
+            print("\t\t",same_minute_seconds)
 
-COUNT = 2
+def get_running_pids():
+    all_processes = []
+    for proc in psutil.process_iter():
+        all_processes.append(proc.pid)
+    still_running = []
+    for proc in all_processes:
+        proc = str(proc)
+        if proc in pid_dict.keys():
+            still_running.append(proc)
+    return still_running
+
+
+COUNT = 200
 while True:
     os.system('cls')
     print('##############################')
     update_events(COUNT)
     frequency_of_actions()
     # print(pid_dict.keys())
-    all_processes = []
-    for proc in psutil.process_iter():
-        all_processes.append(proc.pid)
-    
 
+    print(get_running_pids())
     # print(all_processes)
     # print(pid_dict.keys())
-
-    for proc in all_processes:
-        if proc in pid_dict.keys():
-            print(proc)
+    # print(type(all_processes))
+    # print(type(proc))
     sleep(2)
 
 # pp.pprint(pid_dict[i["ProcessId"]]["process_created"])
