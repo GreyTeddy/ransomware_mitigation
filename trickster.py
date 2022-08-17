@@ -121,17 +121,37 @@ class trickster:
     def getIOCounts(self):
         return psutil.disk_io_counters(perdisk=True)
 
-    def checkIOOccurenciesForPID(self):
+    def overIOOccurencies(self,number_of_actions,magnitude_of_difference_write_read):
+        io_from_start = {}
+        categories = ['read_count', 'write_count', 'read_bytes', 'write_bytes', 'other_count', 'other_bytes']
         for pid in self.pid_dict:
             try:
-                initial_io = self.pid_dict[pid]["IOCounts"]
-                current_io = self.getIOCountsForPID(pid)
+                if "IOCounts" in self.pid_dict[pid]:
+                    # io_from_start[pid] = {}
+                    # self.pid_dict[pid]["IOCounts"] = self.getNewIOCountsForPID(pid)
+                    current = self.getNewIOCountsForPID(pid)
+                    for category in categories:
+                        if current[category] > number_of_actions:
+                            if pid not in io_from_start:
+                                io_from_start[pid] = {}
+                            io_from_start[pid][category] = current[category]
+                            
+                    if pid not in io_from_start:
+                        continue
+                    if categories[0] in io_from_start[pid] and categories[1] in io_from_start[pid]:
+                        difference = io_from_start[pid][categories[1]] / io_from_start[pid][categories[0]]
+                        if difference >= magnitude_of_difference_write_read:
+                            io_from_start[pid]["write_read_magnitude"] = difference
+                    
+                    if categories[2] in io_from_start[pid] and categories[3] in io_from_start[pid]:
+                        difference = io_from_start[pid][categories[2]] / io_from_start[pid][categories[3]]
+                        if difference >= magnitude_of_difference_write_read:
+                            io_from_start[pid]["byte_write_read_magnitude"] = difference
 
-                read_count_difference = current_io.read_count - initial_io["read_count"]
-                if read_count_difference > 1000:
-                    print(pid, read_count_difference)
-            except (psutil.NoSuchProcess, KeyError):
+            except psutil.NoSuchProcess:
                 continue
+        
+        return io_from_start
 
     def searchEvent(self, LogName, EventId, count=20):
         EventLog = win32evtlog.EvtOpenLog(LogName, 1, None)
@@ -191,7 +211,7 @@ class trickster:
                 # if category == "file_created" and len(self.pid_dict[i[id_name]]["events"][category]) > 1:
                 #     print(self.pid_dict[i[id_name]]["events"][category])
     
-    def getCurrentPIDs(self,only_new = False,count=10,max_events=20):
+    def getCurrentPIDs(self,count,max_events,only_new = False):
         running_processes_pid = set()
         for proc in psutil.process_iter():
             try: # handle process dying while storing
@@ -311,18 +331,24 @@ def test_too_many():
     trick.getCurrentPIDs(count=COUNT)
     while True:
         os.system('cls')
-        trick.getCurrentPIDs(count=COUNT)
+        trick.getCurrentPIDs(count=COUNT,max_events=10)
         pp.pprint(trick.eventsDistanceLessThan(seconds=SECONDS,number_of_actions=NUMBER_OF_ACTIONS))
         sleep(1)
 
 
 def test_io():
+    NUMBER_OF_ACTIONS = 10
+    COUNT = 100
+    SECONDS = 0.001
     trick = trickster()
-    trick.getCurrentPIDs()
+    trick.getCurrentPIDs(count=COUNT,max_events=10)
     try:
         while True:
             print("######################################")
-            trick.checkIOOccurenciesForPID()
+            pp.pprint(trick.overIOOccurencies(1,1))
+            # for pid in trick.pid_dict:
+            #     print(pid)
+            #     pp.pprint(trick.getNewIOCountsForPID(pid))
             sleep(2)
     except KeyboardInterrupt:
         print(hello)
