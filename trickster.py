@@ -41,9 +41,6 @@ class trickster:
         self.pid_dict[pid]["proc"].kill()
         del self.pid_dict[pid]["proc"]
 
-    def addProcessFromPID(self, pid):
-        pass
-
     def getPIDfromName(self, name):
         pids = []
         own_pid = os.getpid()  # get own pid so it does not get suspended
@@ -59,10 +56,6 @@ class trickster:
         # as cpu_percent shows utilisation for all threads
         # divide for number of threads
         return round(self.pid_dict[pid]["proc"].cpu_percent() / (psutil.cpu_count()), 1)
-
-    def addPIDfromName(self, name):
-        for pid in self.getPIDfromName(name):
-            self.addProcessFromPID(pid)
 
     def suspendPIDforSeconds(self, pid: int, seconds: float):
         def suspend_then_run(pid, seconds):
@@ -104,13 +97,6 @@ class trickster:
         """
         # try:
         return self.pid_dict[pid]["proc"].io_counters()
-        # except KeyError:
-        #     return {"read_count": 0,
-        #             "write_count":  0,
-        #             "read_bytes":  0,
-        #             "write_bytes":  0,
-        #             "other_count":  0,
-        #             "other_bytes":  0, }
 
     def getNewIOCountsForPID(self, pid):
         """
@@ -132,7 +118,6 @@ class trickster:
         return new
 
 
-        
     def getIOCounts(self):
         return psutil.disk_io_counters(perdisk=True)
 
@@ -142,14 +127,11 @@ class trickster:
                 initial_io = self.pid_dict[pid]["IOCounts"]
                 current_io = self.getIOCountsForPID(pid)
 
-                read_count_difference = current_io.read_count - initial_io.read_count
-            # print(read_count_difference)
+                read_count_difference = current_io.read_count - initial_io["read_count"]
                 if read_count_difference > 1000:
-                    print(self.getProcess(pid), read_count_difference)
-            except psutil.NoSuchProcess:
+                    print(pid, read_count_difference)
+            except (psutil.NoSuchProcess, KeyError):
                 continue
-            # print(read_count_difference)
-            # exit()
 
     def searchEvent(self, LogName, EventId, count=20):
         EventLog = win32evtlog.EvtOpenLog(LogName, 1, None)
@@ -313,27 +295,6 @@ class trickster:
 
     def IOCountsDistanceLessThan(self):
         pass
-        
-def test_file_creations():
-    trick = trickster()
-    # trick.addAllPIDs()
-    NUMBER_OF_ACTIONS = 100
-    COUNT = NUMBER_OF_ACTIONS
-    SECONDS = 0.001
-    while True:
-        # os.system('cls')
-        print('##############################')
-        trick.getCurrentPIDs()
-        trick.updateEvents(COUNT, 100)
-        # pp.pprint(trick.pid_dict)
-        # exit()
-        print("actions in less than ", SECONDS, "seconds")
-        pp.pprint(actions_done_in_less_than(SECONDS,NUMBER_OF_ACTIONS))
-        trick.kill_if_too_many_actions(
-            trick.actions_done_in_less_than(SECONDS, NUMBER_OF_ACTIONS))
-        print(pid_dict.keys())
-        sleep(1)
-
 
 def test_process_creation():
     trick = trickster()
@@ -348,25 +309,9 @@ def test_too_many():
     SECONDS = 0.001
     trick = trickster()
     trick.getCurrentPIDs(count=COUNT)
-    # print(trick.categories_to_search)
-    # pp.pprint(trick.pid_dict)
-    # pp.pprint(trick.pid_dict)
     while True:
         os.system('cls')
         trick.getCurrentPIDs(count=COUNT)
-        ## test that all the pids have the right stuff
-        # for pid in trick.pid_dict:
-        #     if "events" not in trick.pid_dict[pid]:
-        #         continue
-        #     for category in trick.pid_dict[pid]["events"]:
-        #         if category in trick.categories_to_search:
-        #             print(pid)
-        #             # pp.pprint(trick.pid_dict[pid])
-        #             # print(pid)
-        #             print("\t",category)
-        #             if category == "file_created":
-        #                 print("\t\t",trick.pid_dict[pid]["events"]["file_created"])
-        #             continue
         pp.pprint(trick.eventsDistanceLessThan(seconds=SECONDS,number_of_actions=NUMBER_OF_ACTIONS))
         sleep(1)
 
@@ -408,4 +353,4 @@ def test_heh_exe():
 if __name__ == "__main__":
     # test_new_pid()
     pp = pprint.PrettyPrinter(indent=4)
-    test_too_many()
+    test_io()
