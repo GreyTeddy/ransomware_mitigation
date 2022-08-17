@@ -12,16 +12,15 @@ class trickster:
     pid_dict = {}
     white_list = set()
     PYTHON_PID = str(os.getpid())
-    # categories_to_search = ["process_created", "file_created",
-    # "file_created", "registry_value_set","file_creation_time_changed"]
+
     categories_id = {
-        # "process_created": 1,
+        "process_created": 1,
         # "file_creation_time_changed": 2,
         # "process_terminated": 5,
         # "driver_loaded":6,
         # "image_loaded": 7,
         # "process_accessed": 10,
-        "file_created": 11,
+        # "file_created": 11,
         # "registry_object_added_or_deleted": 12,
         # "registry_value_set": 13,
         # "sysmon_config_state_changed": 16,
@@ -113,6 +112,27 @@ class trickster:
         #             "other_count":  0,
         #             "other_bytes":  0, }
 
+    def getNewIOCountsForPID(self, pid):
+        """
+        read_count: read operations
+        write_count: write operations
+        read_bytes: bytes that have been read
+        write_bytes: bytes that have been written
+        other_count: operations other than read and write 
+                        e.g. open
+        other_bytes: bytes revolving around other operations 
+                        e.g. open
+        """
+        # try:
+        new = {}
+        initial = self.pid_dict[pid]["IOCountsInitial"]
+        now = dict(self.pid_dict[pid]["proc"].io_counters()._asdict())
+        for category in initial:
+            new[category] = now[category] - initial[category]
+        return new
+
+
+        
     def getIOCounts(self):
         return psutil.disk_io_counters(perdisk=True)
 
@@ -152,7 +172,8 @@ class trickster:
 
         return EventList
 
-    def updateEvents(self, count, max_events=20):
+    def updateEvents(self, count, max_events=20,running_process_pid = set()):
+        check_running = len(running_process_pid) > 0
         for category in self.categories_to_search:
             # get #count events for category
             Events = self.searchEvent(
@@ -167,14 +188,18 @@ class trickster:
                     raise UserError #no pid found in events
                 # elif "ImageLoaded" in i:
                 #     id_name = "ImageLoaded"
-                if i[id_name] == self.PYTHON_PID or int(i[id_name]) not in self.pid_dict:
-                    continue
+                # if i[id_name] == self.PYTHON_PID or int(i[id_name]) not in self.pid_dict:
+                #     print("hello")
+                #     continue
                 # if new PID
+                if check_running and i[id_name] not in running_process_pid:
+                    continue
+
                 i[id_name] = int(i[id_name])
                 if i[id_name] not in self.pid_dict:
                     # print(type(i[id_name]),i[id_name])
-                    print(i[id_name])
-                    print("here")
+                    # print(i[id_name])
+                    # print("here")
                     self.pid_dict[i[id_name]] = {}
                 for new_category in self.categories_to_search:
                     if new_category not in self.pid_dict[i[id_name]]:
@@ -186,44 +211,102 @@ class trickster:
                 if len(self.pid_dict[i[id_name]][category]) > max_events:
                     self.pid_dict[i[id_name]][category].pop(0)
     
-    def getCurrentPIDs(self):
+    def getCurrentPIDs(self,only_new = False,count=10,max_events=20):
         running_processes_pid = set()
         for proc in psutil.process_iter():
-            pid = proc.pid
-            running_processes_pid.add(proc.pid)
-            self.pid_dict[pid] = {"proc": proc}
-            self.pid_dict[pid]["IOCounts"] = self.getIOCountsForPID(pid)
-
-        self.updateEvents(10)
-        
-        pid_dict_pids = set(self.pid_dict.keys())
-        for pid in pid_dict_pids:
-            if pid not in running_processes_pid:
-                print(pid)
+            try: # handle process dying while storing
+                pid = proc.pid
+                running_processes_pid.add(proc.pid)
+                self.pid_dict[pid] = {"proc": proc}
+                if "IOCounts" not in self.pid_dict[pid]:
+                    self.pid_dict[pid]["IOCountsInitial"] = dict(self.getIOCountsForPID(pid)._asdict())
+                self.pid_dict[pid]["IOCounts"] = self.getNewIOCountsForPID(pid)
+                # pp.pprint(self.pid_dict[pid])
+                # print(self.pid_dict[pid]["IOCountsInitial"])
+            except psutil.NoSuchProcess:
                 del self.pid_dict[pid]
-        # print(pid_dict_pids)
+        
+        self.updateEvents(count, max_events=10)
+        
+        if only_new:
+            pid_dict_pids = set(self.pid_dict.keys())
+            for pid in pid_dict_pids:
+                if pid not in running_processes_pid:
+                    print(pid)
+                    del self.pid_dict[pid]
+
+        # print(self.pid_dict)
         # exit()
 
+    def getCommandsRun(self):
+        words_to_find = ["wbadmin","bcdedit","vssadmin","recoveryenabled","cmd","Win32_Shadowcopy","powershell"]
+        commands = {}
+        for pid in self.pid_dict:
+            if "process_created" in self.pid_dict[pid]:
+                for event in self.pid_dict[pid]["process_created"]:
+                    event_parent = event["ParentProcessId"]
+                    command = event["CommandLine"]
+                    # print(command)
+                    for word in words_to_find:
+                        if command.find(word) != -1:
+                            if command not in commands:
+                                commands[command] = {"words":set(),"parents":{}}
 
+                            commands[command]["words"].add(word)
+                            if event_parent not in commands[command]["parents"]:
+                                commands[command]["parents"][event_parent] = set()
+                            commands[command]["parents"][event_parent].add(pid)
+        return commands
+
+    def printCommandsRun(self,count=20):
+        while True:
+            self.getCurrentPIDs(False,count)
+            os.system("cls")
+            print("##############################")
+            
+            commands = self.getCommandsRun()
+            for command in commands:
+                print(command)
+                for parent in commands[command]["parents"]:
+                    if parent not in self.pid_dict:
+                        continue
+                    print(parent)
+                    # exit()
+                    for child_id in commands[command]["parents"][parent]:
+                        # print("\t",child_id)
+                        if "IOCounts" in self.pid_dict[parent]:
+                            print("\t\t",child_id)
+                            print("\t\t",self.pid_dict[parent]["IOCounts"])
+                print()
+            sleep(1)
+
+        
 def test_file_creations():
     trick = trickster()
     # trick.addAllPIDs()
-    THRESHOLD = 10
+    THRESHOLD = 100
     COUNT = THRESHOLD
     SECONDS = 0.001
     while True:
         # os.system('cls')
         print('##############################')
         trick.getCurrentPIDs()
-        # trick.updateEvents(COUNT, 100)
-        pp.pprint(trick.pid_dict)
-        exit()
-        # print("actions in less than ", SECONDS, "seconds")
-        # pp.pprint(actions_done_in_less_than(SECONDS,THRESHOLD))
-        # trick.kill_if_too_many_actions(
-        #     trick.actions_done_in_less_than(SECONDS, THRESHOLD))
-        # print(pid_dict.keys())
+        trick.updateEvents(COUNT, 100)
+        # pp.pprint(trick.pid_dict)
+        # exit()
+        print("actions in less than ", SECONDS, "seconds")
+        pp.pprint(actions_done_in_less_than(SECONDS,THRESHOLD))
+        trick.kill_if_too_many_actions(
+            trick.actions_done_in_less_than(SECONDS, THRESHOLD))
+        print(pid_dict.keys())
         sleep(1)
+
+
+def test_process_creation():
+    trick = trickster()
+    COUNT = 100
+    SECONDS = 0.001
+    trick.printCommandsRun(COUNT)
 
 
 
@@ -261,7 +344,7 @@ def test_heh_exe():
         sleep(0.05)
 
 
-pp = pprint.PrettyPrinter(indent=4)
 if __name__ == "__main__":
     # test_new_pid()
-    test_file_creations()
+    pp = pprint.PrettyPrinter(indent=4)
+    test_process_creation()
