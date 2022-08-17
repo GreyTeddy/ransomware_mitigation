@@ -20,7 +20,7 @@ class trickster:
         # "driver_loaded":6,
         # "image_loaded": 7,
         # "process_accessed": 10,
-        # "file_created": 11,
+        "file_created": 11,
         # "registry_object_added_or_deleted": 12,
         # "registry_value_set": 13,
         # "sysmon_config_state_changed": 16,
@@ -173,7 +173,6 @@ class trickster:
         return EventList
 
     def updateEvents(self, count, max_events=20,running_process_pid = set()):
-        check_running = len(running_process_pid) > 0
         for category in self.categories_to_search:
             # get #count events for category
             Events = self.searchEvent(
@@ -184,32 +183,31 @@ class trickster:
                     id_name = "ProcessId"
                 elif "SourceProcessId" in i:
                     id_name = "SourceProcessId"
+                elif i[id_name] == PYTHON_PID:
+                    continue
                 else:
                     raise UserError #no pid found in events
-                # elif "ImageLoaded" in i:
-                #     id_name = "ImageLoaded"
-                # if i[id_name] == self.PYTHON_PID or int(i[id_name]) not in self.pid_dict:
-                #     print("hello")
-                #     continue
-                # if new PID
-                if check_running and i[id_name] not in running_process_pid:
-                    continue
-
+                
+                # turn pid string to integer
                 i[id_name] = int(i[id_name])
+
                 if i[id_name] not in self.pid_dict:
-                    # print(type(i[id_name]),i[id_name])
-                    # print(i[id_name])
-                    # print("here")
-                    self.pid_dict[i[id_name]] = {}
-                for new_category in self.categories_to_search:
-                    if new_category not in self.pid_dict[i[id_name]]:
-                        self.pid_dict[i[id_name]][new_category] = []
+                    self.pid_dict[i[id_name]] = {"events":{}}
+                elif "events" not in self.pid_dict[i[id_name]]:
+                    self.pid_dict[i[id_name]]["events"] = {}
+                else:
+                    pass
 
-                # distinguish events by time
-                self.pid_dict[i[id_name]][category].append(i)
+                if category not in self.pid_dict[i[id_name]]["events"]:
+                    self.pid_dict[i[id_name]]["events"][category] = []
+                
+                self.pid_dict[i[id_name]]["events"][category].append(i)
 
-                if len(self.pid_dict[i[id_name]][category]) > max_events:
-                    self.pid_dict[i[id_name]][category].pop(0)
+                if len(self.pid_dict[i[id_name]]["events"][category]) > max_events:
+                    self.pid_dict[i[id_name]]["events"][category].pop(0)
+
+                # if category == "file_created" and len(self.pid_dict[i[id_name]]["events"][category]) > 1:
+                #     print(self.pid_dict[i[id_name]]["events"][category])
     
     def getCurrentPIDs(self,only_new = False,count=10,max_events=20):
         running_processes_pid = set()
@@ -217,8 +215,11 @@ class trickster:
             try: # handle process dying while storing
                 pid = proc.pid
                 running_processes_pid.add(proc.pid)
-                self.pid_dict[pid] = {"proc": proc}
-                if "IOCounts" not in self.pid_dict[pid]:
+                
+                if pid not in self.pid_dict:
+                    self.pid_dict[pid] = {"proc": proc}
+                if "IOCountsInitial" not in self.pid_dict[pid] and self.pid_dict[pid]:
+                    self.pid_dict[pid] = {"proc": proc}
                     self.pid_dict[pid]["IOCountsInitial"] = dict(self.getIOCountsForPID(pid)._asdict())
                 self.pid_dict[pid]["IOCounts"] = self.getNewIOCountsForPID(pid)
                 # pp.pprint(self.pid_dict[pid])
@@ -226,13 +227,13 @@ class trickster:
             except psutil.NoSuchProcess:
                 del self.pid_dict[pid]
         
-        self.updateEvents(count, max_events=10)
+        self.updateEvents(count, max_events=50)
         
         if only_new:
             pid_dict_pids = set(self.pid_dict.keys())
             for pid in pid_dict_pids:
                 if pid not in running_processes_pid:
-                    print(pid)
+                    # print(pid)
                     del self.pid_dict[pid]
 
         # print(self.pid_dict)
@@ -280,12 +281,44 @@ class trickster:
                 print()
             sleep(1)
 
+    def eventsDistanceLessThan(self,seconds=1,number_of_actions=0):
+        less_than_seconds_dict = {}
+        ## handle events
+        for pid in self.pid_dict:
+            pid_in_mind = self.pid_dict[pid]
+            if "events" in pid_in_mind:
+                for category in pid_in_mind["events"]:
+                    # if category not in 
+                    less_than_seconds = 0
+                    events = pid_in_mind["events"][category]
+                    events_length = len(events)
+                    if events_length > 1:
+                        # stop = True
+                        for events_index in range(1, events_length):
+                            difference = (datetime.strptime(events[events_index]["UtcTime"], "%Y-%m-%d %H:%M:%S.%f") - datetime.strptime(events[events_index-1]["UtcTime"],
+                                                                                                                                    "%Y-%m-%d %H:%M:%S.%f")).total_seconds()
+                            if difference <= seconds:
+                                less_than_seconds += 1
+                    if less_than_seconds > 0:
+                        if pid not in less_than_seconds_dict:
+                            less_than_seconds_dict[pid] = {}
+                        if less_than_seconds >= number_of_actions:
+                            less_than_seconds_dict[pid][category] = less_than_seconds
+                
+                if pid in less_than_seconds_dict and len(less_than_seconds_dict[pid]) == 0:
+                    del less_than_seconds_dict[pid]
+
+
+        return less_than_seconds_dict
+
+    def IOCountsDistanceLessThan(self):
+        pass
         
 def test_file_creations():
     trick = trickster()
     # trick.addAllPIDs()
-    THRESHOLD = 100
-    COUNT = THRESHOLD
+    NUMBER_OF_ACTIONS = 100
+    COUNT = NUMBER_OF_ACTIONS
     SECONDS = 0.001
     while True:
         # os.system('cls')
@@ -295,9 +328,9 @@ def test_file_creations():
         # pp.pprint(trick.pid_dict)
         # exit()
         print("actions in less than ", SECONDS, "seconds")
-        pp.pprint(actions_done_in_less_than(SECONDS,THRESHOLD))
+        pp.pprint(actions_done_in_less_than(SECONDS,NUMBER_OF_ACTIONS))
         trick.kill_if_too_many_actions(
-            trick.actions_done_in_less_than(SECONDS, THRESHOLD))
+            trick.actions_done_in_less_than(SECONDS, NUMBER_OF_ACTIONS))
         print(pid_dict.keys())
         sleep(1)
 
@@ -308,6 +341,34 @@ def test_process_creation():
     SECONDS = 0.001
     trick.printCommandsRun(COUNT)
 
+
+def test_too_many():
+    NUMBER_OF_ACTIONS = 10
+    COUNT = 100
+    SECONDS = 0.001
+    trick = trickster()
+    trick.getCurrentPIDs(count=COUNT)
+    # print(trick.categories_to_search)
+    # pp.pprint(trick.pid_dict)
+    # pp.pprint(trick.pid_dict)
+    while True:
+        os.system('cls')
+        trick.getCurrentPIDs(count=COUNT)
+        ## test that all the pids have the right stuff
+        # for pid in trick.pid_dict:
+        #     if "events" not in trick.pid_dict[pid]:
+        #         continue
+        #     for category in trick.pid_dict[pid]["events"]:
+        #         if category in trick.categories_to_search:
+        #             print(pid)
+        #             # pp.pprint(trick.pid_dict[pid])
+        #             # print(pid)
+        #             print("\t",category)
+        #             if category == "file_created":
+        #                 print("\t\t",trick.pid_dict[pid]["events"]["file_created"])
+        #             continue
+        pp.pprint(trick.eventsDistanceLessThan(seconds=SECONDS,number_of_actions=NUMBER_OF_ACTIONS))
+        sleep(1)
 
 
 def test_io():
@@ -347,4 +408,4 @@ def test_heh_exe():
 if __name__ == "__main__":
     # test_new_pid()
     pp = pprint.PrettyPrinter(indent=4)
-    test_process_creation()
+    test_too_many()
