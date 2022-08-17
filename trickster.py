@@ -11,7 +11,6 @@ import xmltodict
 class trickster:
     pid_dict = {}
     white_list = set()
-    PYTHON_PID = str(os.getpid())
 
     categories_id = {
         "process_created": 1,
@@ -19,7 +18,7 @@ class trickster:
         # "process_terminated": 5,
         # "driver_loaded":6,
         # "image_loaded": 7,
-        # "process_accessed": 10,
+        "process_accessed": 10,
         "file_created": 11,
         # "registry_object_added_or_deleted": 12,
         # "registry_value_set": 13,
@@ -174,25 +173,58 @@ class trickster:
 
         return EventList
 
-    def updateEvents(self, count, max_events=20,running_process_pid = set()):
+    def updateEvents(self, count, max_events=20):
         for category in self.categories_to_search:
             # get #count events for category
             Events = self.searchEvent(
                 'Microsoft-Windows-Sysmon/Operational', self.categories_id[category], count)
 
             for i in Events:
+                # try:
                 if "ProcessId" in i:
                     id_name = "ProcessId"
+                    parent_name = "ParentProcessId"
+                    current_directory = os.getcwd()+"\\"
+                    python_id = os.getpid()
+                    # parent_id = os.getppid()
+                    # if i["CurrentDirectory"] == current_directory:
+                    #     print(current_directory)
+                    #     # exit()
+                    #     continue
+                    if "ParentImage" in i and i["ParentImage"] == 'C:\\Python310\\python.exe':
+                        # print("parent image")
+                        continue
+                    if i[id_name] == python_id:
+                        print("parent:",i[parent_name])
+                        print("here") 
+                        
+                    if (parent_name in i and i[parent_name] == python_id):
+                        print("parent:",i[parent_name])
+                        print("here") 
+                    #     # print(i)
+                    #     # print(i[id_name] )
+                    #     # print(i[parent_name])
+                    #     # print(python_id)
+                    #     # print(python_parent)
+                    #     # # exit()
+                    #     # input()
+                        continue
                 elif "SourceProcessId" in i:
                     id_name = "SourceProcessId"
-                elif i[id_name] == PYTHON_PID:
+                elif "ImageLoaded" in i:
                     continue
+                # elif i[id_name] == os.getpid():
+                #     continue
                 else:
                     raise UserError #no pid found in events
-                
+            # except KeyError:
+            #     print(i)
+            #     print([id_name])
+            #     exit()
                 # turn pid string to integer
                 i[id_name] = int(i[id_name])
 
+                # parent = 
                 if i[id_name] not in self.pid_dict:
                     self.pid_dict[i[id_name]] = {"events":{}}
                 elif "events" not in self.pid_dict[i[id_name]]:
@@ -211,7 +243,33 @@ class trickster:
                 # if category == "file_created" and len(self.pid_dict[i[id_name]]["events"][category]) > 1:
                 #     print(self.pid_dict[i[id_name]]["events"][category])
     
+    def getEventForPID(self,pid,count=100, max_events=20):
+        for category in self.categories_to_search:
+            # get #count events for category
+            Events = self.searchEvent(
+                'Microsoft-Windows-Sysmon/Operational', self.categories_id[category], count)
+            
+            for i in Events:
+                if "ProcessId" in i:
+                        id_name = "ProcessId"
+                elif "SourceProcessId" in i:
+                    id_name = "SourceProcessId"
+                elif "ImageLoaded" in i:
+                    continue
+            
+                i[id_name] = int(i[id_name])
+
+                print(i)
+                print(type(i[id_name]))
+                print(type(self.PYTHON_PID))
+                print("event pid:",i[id_name])
+                print("python pid:",self.PYTHON_PID)
+                print(i["ParentCommandLine"])
+                input()
+
+
     def getCurrentPIDs(self,count,max_events,only_new = False):
+        self.pid_dict = {}
         running_processes_pid = set()
         for proc in psutil.process_iter():
             try: # handle process dying while storing
@@ -263,8 +321,8 @@ class trickster:
 
     def printCommandsRun(self,count=20):
         while True:
-            self.getCurrentPIDs(False,count)
-            os.system("cls")
+            self.getCurrentPIDs(count,max_events=10,only_few=False)
+            # os.system("cls")
             print("##############################")
             
             commands = self.getCommandsRun()
@@ -316,6 +374,15 @@ class trickster:
     def IOCountsDistanceLessThan(self):
         pass
 
+def test_get_event_for_pid():
+    PID = 19832
+    COUNT = 100
+    trick = trickster()
+    trick.getCurrentPIDs(count=COUNT,max_events=10)
+    exit()
+    pp.pprint(trick.getEventForPID(PID))
+
+
 def test_process_creation():
     trick = trickster()
     COUNT = 100
@@ -324,16 +391,25 @@ def test_process_creation():
 
 
 def test_too_many():
-    NUMBER_OF_ACTIONS = 10
+    NUMBER_OF_ACTIONS = 2
     COUNT = 100
-    SECONDS = 0.001
+    SECONDS = 0.1
     trick = trickster()
-    trick.getCurrentPIDs(count=COUNT)
+    trick.getCurrentPIDs(count=COUNT,max_events=10)
     while True:
         os.system('cls')
+
         trick.getCurrentPIDs(count=COUNT,max_events=10)
+        # print(os.getcwd())
         pp.pprint(trick.eventsDistanceLessThan(seconds=SECONDS,number_of_actions=NUMBER_OF_ACTIONS))
+        # for pid in trick.pid_dict:
+        #     if len(trick.pid_dict[pid]) >= 4:
+        #         print(pid)
+                # print(len(trick.pid_dict[pid]))
+                # pp.pprint(trick.pid_dict[pid])
+                # input()
         sleep(1)
+
 
 
 def test_io():
@@ -379,4 +455,4 @@ def test_heh_exe():
 if __name__ == "__main__":
     # test_new_pid()
     pp = pprint.PrettyPrinter(indent=4)
-    test_io()
+    test_too_many()
