@@ -183,14 +183,15 @@ class trickster:
                     current_directory = os.getcwd()+"\\"
                     python_id = os.getpid()
                     if "ParentImage" in event and event["ParentImage"] == 'C:\\Python310\\python.exe':
-                        print("parent image")
+                        # print("parent image")
                         continue
                     if event[id_name] == python_id:
-                        print("parent:",i[parent_name])
-                        print("here") 
+                        # print("parent:",i[parent_name])
+                        # print("here") 
+                        pass
                     if (parent_name in event and event[parent_name] == python_id):
-                        print("parent:",event[parent_name])
-                        print("here") 
+                        # print("parent:",event[parent_name])
+                        # print("here") 
                         continue
                 elif "SourceProcessId" in event:
                     id_name = "SourceProcessId"
@@ -345,6 +346,46 @@ class trickster:
 
         return less_than_seconds_dict
 
+    def getDDL(self):
+        import win32api
+        import win32process
+        import pywintypes
+
+        pids_with_suspicious_dll = {}
+        suspcious_dlls = ["bcrypt","crypt32","cryptbase","cryptsp"]
+        while True:
+            pids = win32process.EnumProcesses()
+            for pid in pids:
+                # pid = int(pid)
+                try:
+                    process = win32api.OpenProcess(0x0410, 0, pid)
+                    try:
+                        process_dlls = win32process.EnumProcessModules(process)
+                        for dll in process_dlls:
+                            win32process.GetModuleFileNameEx(process, dll)
+                            dll_name = str(win32process.GetModuleFileNameEx(process, dll)).lower() 
+                            ## -^^- takes the most time
+                            for suspcious_dll in suspcious_dlls:
+                                if suspcious_dll in dll_name:
+                                    if pid not in pids_with_suspicious_dll:
+                                        pids_with_suspicious_dll[pid] = {}
+                                    if suspcious_dll not in pids_with_suspicious_dll[pid]:
+                                        pids_with_suspicious_dll[pid][suspcious_dll] = []
+                                    pids_with_suspicious_dll[pid][suspcious_dll].append(dll_name)
+                            pass
+                    finally:
+                            win32api.CloseHandle(process)
+                except pywintypes.error:
+                        pass
+            
+        return pids_with_suspicious_dll
+        
+def test_dll_check():
+    trick = trickster()
+    trick.getCurrentPIDs(count=100, max_events=10)
+    # pid = 17608S
+    trick.getDDL()
+
 def test_process_creation():
     trick = trickster()
     COUNT = 100
@@ -392,4 +433,4 @@ def test_heh_exe():
 if __name__ == "__main__":
     # test_new_pid()
     pp = pprint.PrettyPrinter(indent=4)
-    test_process_creation()
+    test_dll_check()
