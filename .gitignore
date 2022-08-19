@@ -3,3 +3,4 @@ psutil*
 __pycache__
 watchdog*
 bin\watchdog
+....trickster*
