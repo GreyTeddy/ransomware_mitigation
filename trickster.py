@@ -5,8 +5,9 @@ from threading import Thread
 from time import sleep, time
 from datetime import datetime
 from collections import OrderedDict
-import win32evtlog
 import xmltodict
+import math
+import win32con, win32api, win32evtlog
 
 class trickster:
     pid_dict = {}
@@ -379,11 +380,110 @@ class trickster:
                         pass
             
         return pids_with_suspicious_dll
-        
+
+    honeypots = {}
+    honeypot_folders = []
+    main_drive = "C:"
+    home_path = main_drive+os.environ["HOMEPATH"]
+    # directory_paths = [home_path]
+    directory_paths = [home_path]
+    file_extensions = ["docx","pdf","txt","exe"]
+
+
+    def createHoneyPotFiles(self):
+        if self.home_path in self.directory_paths:
+            for file in os.listdir(self.home_path):
+                if file in ["Application Data","Cookies","Local Settings","My Documents","NetHood","PrintHood","Recent"]:
+                    continue
+                if os.path.isdir(self.home_path+"\\\\"+file):
+                    # print(type(file))
+                    self.directory_paths.append(self.home_path+"\\"+file)
+            pp.pprint(self.directory_paths)
+            pass
+        # exit()
+        for directory_path in self.directory_paths:
+            # files on directory
+            for file_extension in self.file_extensions:
+                file_path = directory_path + "\\....trickster_honey."+ file_extension
+                print(1,"\t\t",file_path)
+                with open(file_path,"w") as file:
+                    win32api.SetFileAttributes(file_path,win32con.FILE_ATTRIBUTE_HIDDEN)
+                    file.write(f"Hello, from trickster!")
+                    self.honeypots[file_path] = {"file_modified":int(os.path.getmtime(file_path))}
+            
+            # create folder
+            folder_path = directory_path+"\\....trickster_honeycomb"
+            os.makedirs(folder_path)
+            win32api.SetFileAttributes(folder_path,win32con.FILE_ATTRIBUTE_HIDDEN)
+            self.honeypot_folders.append(folder_path)
+
+            # files inside honey folder inside directory
+            for file_extension in self.file_extensions:
+                print(2,"\t\t",file_path)
+                file_path = directory_path + "\\....trickster_honeycomb\\....trickster_honey."+ file_extension
+                with open(file_path,"w") as file:
+                    win32api.SetFileAttributes(file_path,win32con.FILE_ATTRIBUTE_HIDDEN)
+                    file.write(f"Hello, from trickster!")
+                    self.honeypots[file_path] = {"file_modified":int(os.path.getmtime(file_path))}
+
+    def getEntropy(self,file_content: str,file_size: int):
+        # from 
+        # https://stackoverflow.com/questions/59528143/compute-entropy-of-a-pickle-file
+        byte_counters = {byte: 0 for byte in range(2 ** 8)}
+        for byte in file_content:
+            byte_counters[ord(byte)] += 1 
+        probs = [byte_counter / file_size for byte_counter in byte_counters.values()]
+        entropy = -sum(prob * math.log2(prob) for prob in probs if prob > 0)
+        return entropy
+
+    def getFileMetaDataChange(self,file_path: str):
+        one = int(os.path.getmtime(file_path))
+        two = self.honeypots[file_path]["file_modified"]
+        return self.honeypots[file_path]["file_modified"] != int(os.path.getmtime(file_path))
+
+    def checkHoneyPotFiles(self):
+        # [file does not exist, file time has been modified ]
+        for file_path in self.honeypots:
+            if not os.path.exists(file_path):
+                # if the file has changed or been deleted
+                return [True,False,False]
+            elif self.getFileMetaDataChange(file_path):
+                # if the file has been modified
+                return [False,True,False]
+            
+        return [False,False,False]
+
+
+    def removeHoneyPotFiles(self):
+        if len(self.honeypots) > 0:
+            for file_path in self.honeypots:
+                os.remove(file_path)
+            for folder_path in self.honeypot_folders:
+                os.rmdir(folder_path)
+                    
+
+def test_honeypot():
+    trick = trickster()
+    trick.createHoneyPotFiles()
+    print("checking")
+    print(trick.honeypots)
+    try:
+        while True:
+            print("hello")
+            print()
+            if True in trick.checkHoneyPotFiles():
+                print("found")
+                raise KeyboardInterrupt
+            # print("done")
+            sleep(0.1)
+    except KeyboardInterrupt:
+        trick.removeHoneyPotFiles()
+    # trick.removeHoneyPotFiles()
+
+
 def test_dll_check():
     trick = trickster()
     trick.getCurrentPIDs(count=100, max_events=10)
-    # pid = 17608S
     trick.getDDL()
 
 def test_process_creation():
@@ -433,4 +533,4 @@ def test_heh_exe():
 if __name__ == "__main__":
     # test_new_pid()
     pp = pprint.PrettyPrinter(indent=4)
-    test_dll_check()
+    test_honeypot()
