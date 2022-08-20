@@ -45,6 +45,7 @@ event_categories = {
 }
 dangerous_event_process_created = {}
 dangerous_event_file_created = {}
+dangerous_event_file_deleted = {}
 
 
 # for honeypot
@@ -133,7 +134,8 @@ def populateDDL(update_after_seconds, suspcious_dlls={"bcrypt": "encryption"}):
             except pywintypes.error:
                 pass
 
-        dangerous_dll_pids = suspcious_dlls_found
+        for pid in suspcious_dlls_found:
+            dangerous_dll_pids[pid] = suspcious_dlls_found
         sleep(update_after_seconds)
 
 
@@ -164,7 +166,7 @@ def searchEvent(LogName, EventId, count=20):
 def findQuickFileCreationEvents(update_after_seconds, events_count, files_created_time_threshold):
     while True:
         Events = searchEvent(
-            'Microsoft-Windows-Sysmon/Operational', event_categories["file_created"], events_count)
+            'Microsoft-Windows-Sysmon/Operational', event_categories["file_created"], count=events_count)
 
         file_create_events = {}
         for event in Events:
@@ -216,11 +218,11 @@ def findDangerousProcessCreatedEvents(update_after_seconds, events_count, keywor
                 if command.find(keyword) != -1:
                     if event_parent_pid not in dangerous_event_process_created:
                         dangerous_event_process_created[event_parent_pid] = {}
-                    if command not in dangerous_pids[event_parent]:
-                        dangerous_pids[event_parent_pid][command] = {
+                    if command not in dangerous_event_process_created[event_parent]:
+                        dangerous_event_process_created[event_parent_pid][command] = {
                             "keywords": set()}
 
-                    event_parent[event_parent_pid][command]["keywords"].add(
+                    dangerous_event_process_created[event_parent_pid][command]["keywords"].add(
                         keyword)
         sleep(update_after_seconds)
 
@@ -230,6 +232,47 @@ def findDangerousProcessCreatedEvents(update_after_seconds, events_count, keywor
 The Honeypot
 """
 
+def setAuditInfoToHoneyPots():
+    import subprocess
+
+    # set object access audit to true
+    audit_pol = subprocess.run(
+        ["powershell", "-Command", 'auditpol /set /category:"Object Access" /failure:enable /success:enable'], capture_output=True)
+    # print(audit_pol)
+
+    # create a temporary folder
+    os.mkdir("temporary_folder")
+
+    # assign audit to the temporery folder
+    target_file = "temporary_folder"
+    audit_user = "Everyone"
+    audit_rules = "CreateFiles, DeleteSubdirectoriesAndFiles, WriteAttributes, Delete"
+    inherit_type = "ContainerInherit,ObjectInherit"
+    audit_type = "Success,Failure"
+    set_variable_command = f'$AuditUser = "{audit_user}";$AuditRules = "{audit_rules}";$InheritType = "{inherit_type}";$AuditType = "{audit_type}"'
+    get_audit_command = f'$AccessRule = New-Object System.Security.AccessControl.FileSystemAuditRule($AuditUser,$AuditRules,$InheritType,"None",$AuditType)'
+    get_target_file = f"$TargetFile = '{target_file}'"
+    set_audit_command = '$ACL = Get-Acl $TargetFile;$ACL.SetAuditRule($AccessRule);Write-Host "Processing >",$TargetFile;$ACL | Set-Acl $TargetFile'
+    command = set_variable_command+ ";" + get_audit_command + ";"+get_target_file + ";" + set_audit_command
+    result = subprocess.run(
+            ["powershell", "-Command", command], capture_output=True)
+
+    # put the audit info to a honeypotfile 
+    target_file = '.\....trickster_honey.txt'
+    command = f'Get-Acl temporary_folder | Set-Acl {target_file}'
+    result = subprocess.run(
+            ["powershell", "-Command", command], capture_output=True)
+    print(result)
+
+    for file_path in honeypots:
+        command = f'Get-Acl temporary_folder -Audit | Set-Acl {file_path}'
+        result = subprocess.run(
+                ["powershell", "-Command", command], capture_output=True)
+        # if result.stderr == "":
+        print(file_path,"set to be audited")
+        # return None
+    
+    os.rmdir(".\\temporary_folder")
 
 def createHoneyPotFiles():
     if home_path in directory_paths:
@@ -278,7 +321,7 @@ def createHoneyPotFiles():
                 honeypots[file_path] = {
                     "file_modified": int(os.path.getmtime(file_path))}
 
-    # print("Honeypot files created!!#########################")
+    print("Honeypot files created!!#########################")
 
 
 def getEntropy(file_content: str, file_size: int):
@@ -304,11 +347,11 @@ def checkHoneyPotFiles(update_after_seconds):
         for file_path in honeypots:
             if not os.path.exists(file_path):
                 # if the file has changed or been deleted
-                print("does not exist:",file_path)
+                # print("does not exist:",file_path)
                 dangerous_honeypot_edits[file_path] = [True, False]
             elif getFileMetaDataChange(file_path):
                 # if the file has been modified
-                print("file has changed:",file_path)
+                # print("file has changed:",file_path)
                 dangerous_honeypot_edits[file_path] = [False, True]
 
         sleep(update_after_seconds)
@@ -324,24 +367,23 @@ def removeHoneyPotFiles():
             os.rmdir(folder_path)
 
 
-def findProcessThatEditedFile():
-
-    searchEvent(LogName, event_categories["file_created"])
-
 #########################################################################################
 """
 Running the application
 """
 
-
-def printPIDDict(update_after_seconds):
+def printLogs(update_after_seconds):
     while True:
         print("###########################")
         # pp.pprint(pid_dict)
-        pids = list(pid_dict.keys())
-        for pid in pids:
-            if "events" in pid_dict[pid]:
-                print(pid_dict[pid])
+        # print("dangerous_dll_pids\t\t",dangerous_dll_pids)
+        print("dangerous_event_file_created\t", dangerous_event_file_created)
+        print("dangerous_event_process_created\t",
+              dangerous_event_process_created)
+        print("dangerous_event_file_deleted\t", dangerous_event_file_deleted)
+        print("dangerous_honeypot_edits\t", dangerous_honeypot_edits)
+        print("dangerous_io_counts_pids\t")
+        pp.pprint(dangerous_io_counts_pids)
         sleep(update_after_seconds)
 
 
@@ -352,8 +394,8 @@ def getThread(function, arguments):
 def runWithTheads():
     ##########################################################
     # Variables
-    events_count = 100
-    update_after_seconds = 0.001
+    events_count = 50
+    update_after_seconds = 0.0001
 
     suspcious_dlls = {"bcrypt": "encryption", "crypt32": "encryption",
                       "cryptbase": "encryption", "cryptsp": "encryption"}
@@ -363,9 +405,9 @@ def runWithTheads():
     write_read_ratio_threshold = 1.5
     byte_write_read_ratio_threshold = 1.5
 
-    files_created_time_threshold = 0.001
+    files_created_time_threshold = 0.000
 
-    ## Sequential Functions
+    # Sequential Functions
     createHoneyPotFiles()
 
     ##########################################################
@@ -375,8 +417,8 @@ def runWithTheads():
                  byte_write_read_ratio_threshold)
     checkIOCounts_thread = getThread(checkIOCounts, arguments)
 
-    arguments = (update_after_seconds, suspcious_dlls)
-    populateDDL_thread = getThread(populateDDL, arguments)
+    # arguments = (update_after_seconds, suspcious_dlls)
+    # populateDDL_thread = getThread(populateDDL, arguments)
 
     arguments = (update_after_seconds, events_count, keywords_to_find)
     findDangerousProcessCreatedEvents_thread = getThread(
@@ -390,12 +432,22 @@ def runWithTheads():
     arguments = (update_after_seconds,)
     checkHoneyPotFiles_thread = getThread(checkHoneyPotFiles, arguments)
 
-    # Start Threads
+    arguments = (update_after_seconds, events_count)
+    checkHoneyPotFileDeletion_thread = getThread(
+        checkHoneyPotFileDeletion, arguments)
+
+    # Start checking Threads
     checkIOCounts_thread.start()
-    populateDDL_thread.start()
+    # populateDDL_thread.start()
     findDangerousProcessCreatedEvents_thread.start()
     findQuickFileCreationEvents_thread.start()
+    checkHoneyPotFileDeletion_thread.start()
     checkHoneyPotFiles_thread.start()
+
+    # log thread
+    arguments = (5,)
+    printLogs_thread = getThread(printLogs, arguments)
+    printLogs_thread.start()
 
     try:
         while True:
@@ -407,8 +459,17 @@ def runWithTheads():
 
 if __name__ == "__main__":
     pp = pprint.PrettyPrinter(indent=1)
-    try:
-        runWithTheads()
-    finally:
-        print("hello")
+    # try:
+    #     runWithTheads()
+    # finally:
+    #     print("hello")
     # pp.pprint(pid_dict)
+
+    try:
+        createHoneyPotFiles()
+        setAuditInfoToHoneyPots()
+        while True:
+            sleep(5)
+    except:
+        removeHoneyPotFiles()
+        pass
