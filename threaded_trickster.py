@@ -205,30 +205,25 @@ def findQuickFileCreationEvents(update_after_seconds, events_count, files_create
 
 def findDangerousProcessCreatedEvents(update_after_seconds, events_count, keywords_to_find):
     while True:
-        Events = searchEvent(
-            'Microsoft-Windows-Sysmon/Operational', event_categories["process_created"], events_count)
-        for event in Events:
-            event_parent_pid = event["ParentProcessId"]
-            python_ids = [os.getpid(), os.getppid()]
-            event_pid = event["ProcessId"]
-            # skip if its from this program
-            if event_parent_pid in python_ids or event_pid in python_ids:
-                continue
-
-            command = event["CommandLine"]
-            # check comand for keywords
+        LogName = "Microsoft-Windows-Sysmon/Operational"
+        EventLog = win32evtlog.EvtOpenLog(LogName, 1, None)
+        ResultSet = win32evtlog.EvtQuery(
+            LogName, win32evtlog.EvtQueryReverseDirection, f"*[System[(EventID={event_categories['process_created']})]]", None)
+        for evt in win32evtlog.EvtNext(ResultSet, events_count):
+            res = win32evtlog.EvtRender(evt, 1)
             for keyword in keywords_to_find:
-                if command.find(keyword) != -1:
-                    if event_parent_pid not in dangerous_event_process_created:
-                        dangerous_event_process_created[event_parent_pid] = {}
-                    if command not in dangerous_event_process_created[event_parent]:
-                        dangerous_event_process_created[event_parent_pid][command] = {
-                            "keywords": set()}
-
-                    dangerous_event_process_created[event_parent_pid][command]["keywords"].add(
-                        keyword)
+                start_index = res.find(keyword)
+                if start_index != -1:
+                    print("found",keyword)
+                    pp.pprint(res)
+                    start_index = res.find("ProcessId'>") + 11
+                    stop_index = res.find("<",start_index)
+                    pid = int(res[start_index:stop_index],base=16)
+                    start_index = res.find("ParentProcessId'>") + 17
+                    stop_index = res.find("<",start_index)
+                    parent_pid = int(res[start_index:stop_index],base=16)
+                    pass
         sleep(update_after_seconds)
-
 
 #########################################################################################
 """
@@ -435,7 +430,7 @@ def getThread(function, arguments):
 def runWithTheads():
     ##########################################################
     # Variables
-    events_count = 50
+    events_count = 10
     update_after_seconds = 0.0001
 
     suspcious_dlls = {"bcrypt": "encryption", "crypt32": "encryption",
@@ -450,17 +445,17 @@ def runWithTheads():
 
     # Sequential Functions
     
-    createHoneyPotFiles()
-    setAuditInfoToHoneyPots()
+    # createHoneyPotFiles()
+    # setAuditInfoToHoneyPots()
 
     ##########################################################
     # Initialise Threads
 
-    # checking io
-    arguments = (update_after_seconds, write_read_ratio_threshold,
-                 byte_write_read_ratio_threshold)
-    checkIOCounts_thread = getThread(checkIOCounts, arguments)
-    checkIOCounts_thread.start()
+    # # checking io
+    # arguments = (update_after_seconds, write_read_ratio_threshold,
+    #              byte_write_read_ratio_threshold)
+    # checkIOCounts_thread = getThread(checkIOCounts, arguments)
+    # checkIOCounts_thread.start()
 
     # checking dangerous processes
     arguments = (update_after_seconds, events_count, keywords_to_find)
@@ -468,23 +463,23 @@ def runWithTheads():
         findDangerousProcessCreatedEvents, arguments)
     findDangerousProcessCreatedEvents_thread.start()
 
-    # checking quick file creation
-    arguments = (update_after_seconds, events_count,
-                 files_created_time_threshold)
-    findQuickFileCreationEvents_thread = getThread(
-        findQuickFileCreationEvents, arguments)
-    findQuickFileCreationEvents_thread.start()
+    # # checking quick file creation
+    # arguments = (update_after_seconds, events_count,
+    #              files_created_time_threshold)
+    # findQuickFileCreationEvents_thread = getThread(
+    #     findQuickFileCreationEvents, arguments)
+    # findQuickFileCreationEvents_thread.start()
 
-    # checking honeypotfiles status through manual check
-    arguments = (update_after_seconds,)
-    checkHoneyPotFiles_thread = getThread(checkHoneyPotFiles, arguments)
-    checkHoneyPotFiles_thread.start()
+    # # checking honeypotfiles status through manual check
+    # arguments = (update_after_seconds,)
+    # checkHoneyPotFiles_thread = getThread(checkHoneyPotFiles, arguments)
+    # checkHoneyPotFiles_thread.start()
 
-    # checking honeypot files through events
-    update_after_seconds = 0.001
-    arguments = (update_after_seconds,)
-    checkAuditForHoneypot_thread = getThread(checkAuditForHoneypot, arguments)
-    checkAuditForHoneypot_thread.start()
+    # # checking honeypot files through events
+    # update_after_seconds = 0.001
+    # arguments = (update_after_seconds,)
+    # checkAuditForHoneypot_thread = getThread(checkAuditForHoneypot, arguments)
+    # checkAuditForHoneypot_thread.start()
 
 
     # log thread
