@@ -12,6 +12,7 @@ import win32api
 import win32evtlog
 import win32process
 import pywintypes
+import subprocess
 
 #########################################################################################
 """
@@ -53,8 +54,10 @@ honeypots = {}
 honeypot_folders = []
 main_drive = "C:"
 home_path = main_drive+os.environ["HOMEPATH"]
-# directory_paths = [home_path]
-directory_paths = ["."]
+directory_paths = [home_path]
+# directory_paths = ["."]
+# directory_paths = [".",home_path]
+
 file_extensions = ["docx", "pdf", "txt", "exe"]
 dangerous_honeypot_edits = {}
 #########################################################################################
@@ -150,7 +153,7 @@ def searchEvent(LogName, EventId, count=20):
     totalRecords = win32evtlog.EvtGetLogInfo(
         EventLog, win32evtlog.EvtLogNumberOfLogRecords)[0]
     ResultSet = win32evtlog.EvtQuery(
-        LogName, win32evtlog.EvtQueryReverseDirection, "*[System[(EventID=%d)]]" % EventId, None)
+        LogName, win32evtlog.EvtQueryReverseDirection, f"*[System[(EventID={EventId})]]", None)
     EventList = []
     for evt in win32evtlog.EvtNext(ResultSet, count):
         res = xmltodict.parse(win32evtlog.EvtRender(evt, 1))
@@ -233,7 +236,6 @@ The Honeypot
 """
 
 def setAuditInfoToHoneyPots():
-    import subprocess
 
     # set object access audit to true
     audit_pol = subprocess.run(
@@ -257,12 +259,12 @@ def setAuditInfoToHoneyPots():
     result = subprocess.run(
             ["powershell", "-Command", command], capture_output=True)
 
-    # put the audit info to a honeypotfile 
-    target_file = '.\....trickster_honey.txt'
-    command = f'Get-Acl temporary_folder | Set-Acl {target_file}'
-    result = subprocess.run(
-            ["powershell", "-Command", command], capture_output=True)
-    print(result)
+    # # put the audit info to a honeypotfile 
+    # target_file = '.\....trickster_honey.txt'
+    # command = f'Get-Acl temporary_folder | Set-Acl {target_file}'
+    # result = subprocess.run(
+    #         ["powershell", "-Command", command], capture_output=True)
+    # print(result)
 
     for file_path in honeypots:
         command = f'Get-Acl temporary_folder -Audit | Set-Acl {file_path}'
@@ -367,6 +369,45 @@ def removeHoneyPotFiles():
             os.rmdir(folder_path)
 
 
+def checkAuditForHoneypot(update_after_seconds,count):
+    # Clear security log for clean slate
+    clear_security_log = subprocess.run(
+        ["powershell", "-Command", 'Clear-EventLog -LogName Security'], capture_output=True)
+
+    while True:
+        start = time()
+        LogName = "Security"
+        EventId = 4656
+        EventLog = win32evtlog.EvtOpenLog(LogName, 1, None)
+        ResultSet = win32evtlog.EvtQuery(
+            LogName, win32evtlog.EvtQueryReverseDirection, f"*[System[(EventID={EventId})]]", None)
+        for evt in win32evtlog.EvtNext(ResultSet, count):
+            # res = xmltodict.parse(win32evtlog.EvtRender(evt, 1))
+            test = win32evtlog.EvtRender(evt, 1)
+            start_index = test.find("ObjectName") + 12
+            stop_index = test.find("<",start_index)
+            object_name = test[start_index:stop_index]
+            if "trickster" in object_name:
+                test = test[stop_index:]
+                start_index = test.find("ProcessId'>") + 11
+                stop_index = test.find("<",start_index)
+                pid = int(test[start_index:stop_index],base=16)
+                psutil.Process(pid).suspend()
+                parrent_pid = psutil.Process(pid).ppid()
+                psutil.Process(parrent_pid).suspend()
+                while True:
+                    parrent_pid = psutil.Process(parrent_pid).ppid()
+                    psutil.Process(parrent_pid).suspend()
+                exit()
+            pass
+        pass
+        
+        stop = time()
+        print(stop-start)
+        
+        sleep(update_after_seconds)
+    
+
 #########################################################################################
 """
 Running the application
@@ -408,41 +449,43 @@ def runWithTheads():
     files_created_time_threshold = 0.000
 
     # Sequential Functions
+    
     createHoneyPotFiles()
+    setAuditInfoToHoneyPots()
 
     ##########################################################
     # Initialise Threads
 
+    # checking io
     arguments = (update_after_seconds, write_read_ratio_threshold,
                  byte_write_read_ratio_threshold)
     checkIOCounts_thread = getThread(checkIOCounts, arguments)
+    checkIOCounts_thread.start()
 
-    # arguments = (update_after_seconds, suspcious_dlls)
-    # populateDDL_thread = getThread(populateDDL, arguments)
-
+    # checking dangerous processes
     arguments = (update_after_seconds, events_count, keywords_to_find)
     findDangerousProcessCreatedEvents_thread = getThread(
         findDangerousProcessCreatedEvents, arguments)
+    findDangerousProcessCreatedEvents_thread.start()
 
+    # checking quick file creation
     arguments = (update_after_seconds, events_count,
                  files_created_time_threshold)
     findQuickFileCreationEvents_thread = getThread(
         findQuickFileCreationEvents, arguments)
+    findQuickFileCreationEvents_thread.start()
 
+    # checking honeypotfiles status through manual check
     arguments = (update_after_seconds,)
     checkHoneyPotFiles_thread = getThread(checkHoneyPotFiles, arguments)
-
-    arguments = (update_after_seconds, events_count)
-    checkHoneyPotFileDeletion_thread = getThread(
-        checkHoneyPotFileDeletion, arguments)
-
-    # Start checking Threads
-    checkIOCounts_thread.start()
-    # populateDDL_thread.start()
-    findDangerousProcessCreatedEvents_thread.start()
-    findQuickFileCreationEvents_thread.start()
-    checkHoneyPotFileDeletion_thread.start()
     checkHoneyPotFiles_thread.start()
+
+    # checking honeypot files through events
+    update_after_seconds = 0.001
+    arguments = (update_after_seconds,)
+    checkAuditForHoneypot_thread = getThread(checkAuditForHoneypot, arguments)
+    checkAuditForHoneypot_thread.start()
+
 
     # log thread
     arguments = (5,)
@@ -459,17 +502,11 @@ def runWithTheads():
 
 if __name__ == "__main__":
     pp = pprint.PrettyPrinter(indent=1)
-    # try:
-    #     runWithTheads()
-    # finally:
-    #     print("hello")
-    # pp.pprint(pid_dict)
-
     try:
-        createHoneyPotFiles()
-        setAuditInfoToHoneyPots()
-        while True:
-            sleep(5)
-    except:
-        removeHoneyPotFiles()
-        pass
+        runWithTheads()
+    finally:
+        print("hello")
+    # pp.pprint(pid_dict)
+    
+    # removeHoneyPotFiles()
+    pass
