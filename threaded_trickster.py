@@ -110,7 +110,6 @@ def checkIOCounts(update_after_seconds, write_read_ratio_threshold, byte_write_r
 Handling DDLs
 """
 
-
 def populateDDL(update_after_seconds, suspcious_dlls={"bcrypt": "encryption"}):
     while True:
         suspcious_dlls_found = {}
@@ -140,7 +139,6 @@ def populateDDL(update_after_seconds, suspcious_dlls={"bcrypt": "encryption"}):
         for pid in suspcious_dlls_found:
             dangerous_dll_pids[pid] = suspcious_dlls_found
         sleep(update_after_seconds)
-
 
 #########################################################################################
 """
@@ -203,12 +201,14 @@ def findQuickFileCreationEvents(update_after_seconds, events_count, files_create
         sleep(update_after_seconds)
 
 
-def findDangerousProcessCreatedEvents(update_after_seconds, events_count, keywords_to_find):
+def findDangerousProcessCreatedEvents(update_after_seconds):
+    keywords_to_find = ["wbadmin", "bcdedit", "vssadmin","delete","taskkill.exe /f /im","wmic shadowcopy delete","icacls . /grant Everyone"]
+    LogName = "Microsoft-Windows-Sysmon/Operational"
+    EventLog = win32evtlog.EvtOpenLog(LogName, 1, None)
     while True:
-        LogName = "Microsoft-Windows-Sysmon/Operational"
-        EventLog = win32evtlog.EvtOpenLog(LogName, 1, None)
         ResultSet = win32evtlog.EvtQuery(
             LogName, win32evtlog.EvtQueryReverseDirection, f"*[System[(EventID={event_categories['process_created']})]]", None)
+        start = time()
         for evt in win32evtlog.EvtNext(ResultSet, events_count):
             res = win32evtlog.EvtRender(evt, 1)
             for keyword in keywords_to_find:
@@ -222,7 +222,16 @@ def findDangerousProcessCreatedEvents(update_after_seconds, events_count, keywor
                     start_index = res.find("ParentProcessId'>") + 17
                     stop_index = res.find("<",start_index)
                     parent_pid = int(res[start_index:stop_index],base=16)
-                    pass
+                    print(pid,parent_pid)
+                    try:
+                        while True:
+                            parent_pid = psutil.Process(parent_pid).ppid()
+                            print(parent_pid)
+                    except:
+                        pass
+                    return
+        stop = time()
+        print(stop-start)
         sleep(update_after_seconds)
 
 #########################################################################################
@@ -350,7 +359,6 @@ def checkHoneyPotFiles(update_after_seconds):
                 # if the file has been modified
                 # print("file has changed:",file_path)
                 dangerous_honeypot_edits[file_path] = [False, True]
-
         sleep(update_after_seconds)
 
 
@@ -408,19 +416,19 @@ def checkAuditForHoneypot(update_after_seconds,count):
 Running the application
 """
 
-def printLogs(update_after_seconds):
-    while True:
-        print("###########################")
-        # pp.pprint(pid_dict)
-        # print("dangerous_dll_pids\t\t",dangerous_dll_pids)
-        print("dangerous_event_file_created\t", dangerous_event_file_created)
-        print("dangerous_event_process_created\t",
-              dangerous_event_process_created)
-        print("dangerous_event_file_deleted\t", dangerous_event_file_deleted)
-        print("dangerous_honeypot_edits\t", dangerous_honeypot_edits)
-        print("dangerous_io_counts_pids\t")
-        pp.pprint(dangerous_io_counts_pids)
-        sleep(update_after_seconds)
+# def printLogs(update_after_seconds):
+#     while True:
+#         print("###########################")
+#         # pp.pprint(pid_dict)
+#         # print("dangerous_dll_pids\t\t",dangerous_dll_pids)
+#         print("dangerous_event_file_created\t", dangerous_event_file_created)
+#         print("dangerous_event_process_created\t",
+#               dangerous_event_process_created)
+#         print("dangerous_event_file_deleted\t", dangerous_event_file_deleted)
+#         print("dangerous_honeypot_edits\t", dangerous_honeypot_edits)
+#         print("dangerous_io_counts_pids\t")
+#         pp.pprint(dangerous_io_counts_pids)
+#         sleep(update_after_seconds)
 
 
 def getThread(function, arguments):
@@ -430,13 +438,12 @@ def getThread(function, arguments):
 def runWithTheads():
     ##########################################################
     # Variables
-    events_count = 10
     update_after_seconds = 0.0001
 
     suspcious_dlls = {"bcrypt": "encryption", "crypt32": "encryption",
                       "cryptbase": "encryption", "cryptsp": "encryption"}
 
-    keywords_to_find = ["wbadmin", "bcdedit", "vssadmin"]
+    
 
     write_read_ratio_threshold = 1.5
     byte_write_read_ratio_threshold = 1.5
@@ -452,18 +459,22 @@ def runWithTheads():
     # Initialise Threads
 
     # # checking io
+    # update_after_seconds = 0.001
     # arguments = (update_after_seconds, write_read_ratio_threshold,
     #              byte_write_read_ratio_threshold)
     # checkIOCounts_thread = getThread(checkIOCounts, arguments)
     # checkIOCounts_thread.start()
 
-    # checking dangerous processes
+    # checking dangerous processes                      
+    events_count = 4
     arguments = (update_after_seconds, events_count, keywords_to_find)
     findDangerousProcessCreatedEvents_thread = getThread(
         findDangerousProcessCreatedEvents, arguments)
     findDangerousProcessCreatedEvents_thread.start()
 
-    # # checking quick file creation
+    # checking quick file creation
+    # events_count = 4
+    # update_after_seconds = 0.001
     # arguments = (update_after_seconds, events_count,
     #              files_created_time_threshold)
     # findQuickFileCreationEvents_thread = getThread(
@@ -471,13 +482,15 @@ def runWithTheads():
     # findQuickFileCreationEvents_thread.start()
 
     # # checking honeypotfiles status through manual check
+    # update_after_seconds = 0.001
     # arguments = (update_after_seconds,)
     # checkHoneyPotFiles_thread = getThread(checkHoneyPotFiles, arguments)
     # checkHoneyPotFiles_thread.start()
 
     # # checking honeypot files through events
     # update_after_seconds = 0.001
-    # arguments = (update_after_seconds,)
+    # events_count = 3
+    # arguments = (update_after_seconds,events_count)
     # checkAuditForHoneypot_thread = getThread(checkAuditForHoneypot, arguments)
     # checkAuditForHoneypot_thread.start()
 
