@@ -242,7 +242,7 @@ def createHoneyPotFiles():
     for directory_path in directory_paths:
         # files on directory
         for file_extension in file_extensions:
-            file_path = directory_path + "\\....trickster_honey." + file_extension
+            file_path = directory_path + "\\!!!!trickster_honey." + file_extension
             print(1, "\t\t", file_path)
             with open(file_path, "w") as file:
                 win32api.SetFileAttributes(
@@ -252,7 +252,7 @@ def createHoneyPotFiles():
                     "file_modified": int(os.path.getmtime(file_path))}
 
         # create folder
-        folder_path = directory_path+"\\....trickster_honeycomb"
+        folder_path = directory_path+"\\!!!!trickster_honeycomb"
         honeypot_folders.append(folder_path)
         # os.makedirs(folder_path)
         try:
@@ -267,7 +267,7 @@ def createHoneyPotFiles():
         for file_extension in file_extensions:
             print(2, "\t\t", file_path)
             file_path = directory_path + \
-                "\\....trickster_honeycomb\\....trickster_honey." + file_extension
+                "\\!!!!trickster_honeycomb\\!!!!trickster_honey." + file_extension
             with open(file_path, "w") as file:
                 win32api.SetFileAttributes(
                     file_path, win32con.FILE_ATTRIBUTE_HIDDEN)
