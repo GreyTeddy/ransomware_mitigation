@@ -477,7 +477,7 @@ class MyEventHandler(EventHandler):
         # from
         # https://stackoverflow.com/questions/59528143/compute-entropy-of-a-pickle-file
         buffer_size = len(buffer_content)
-        byte_counters = {byte: 0 for byte in range(2 ** 16)}
+        byte_counters = {byte: 0 for byte in range(2 ** 8)}
         for byte in buffer_content:
             byte_counters[ord(byte)] += 1.0
         probs = [byte_counter /
@@ -631,8 +631,9 @@ def checkingProcess(honeypots):
     while True:
         pid_and_reason = pid_to_suspend_queue.get()  # wait for a suspicious pid
         pid = int(pid_and_reason[0])
-
-        if pid_and_reason[1] == "debug":
+        if pid in old_pids.keys(): # if it is an id witnessed before the checking initialisation
+            pass
+        elif pid_and_reason[1] == "debug":
             if pid not in debug_pids:
                 # print("this pid is going to be debuged", pid)
                 # print(pid)
