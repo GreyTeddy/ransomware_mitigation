@@ -1,0 +1,4 @@
+psutil
+xmltodict
+pywin32
+winappdbg
