@@ -4,3 +4,4 @@ __pycache__
 watchdog*
 bin\watchdog
 ....trickster*
+extra files/*.pyc

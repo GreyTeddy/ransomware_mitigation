@@ -11,8 +11,6 @@ import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 # https://stackoverflow.com/questions/55701662/how-to-read-event-logs-under-applications-and-services-logs-in-python
-
-
 def search_event(LogName, EventId, count=20):
     EventLog = win32evtlog.EvtOpenLog(LogName, 1, None)
 
