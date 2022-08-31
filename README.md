@@ -27,3 +27,4 @@ This repository also includes analysis done through the scraping of analysis of 
     ```
         python processed_trickster.py
     ```
+This is a software implementation for the Thesis for the MSc Computing (Software Engineering) course at Imperial College London. 
